@@ -1,0 +1,119 @@
+---
+// ADMIN LOGIN — Static (SSG), pre-rendered at build time.
+// The HTML shell is static; all auth logic runs in the browser against
+// Supabase Auth. There is no server-side secret here.
+export const prerender = true;
+
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout title="Admin Login — AstroShop">
+  <main class="flex flex-1 items-center justify-center px-4 py-12">
+    <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+      <h1 class="text-2xl font-bold text-slate-900">Admin Portal</h1>
+      <p class="mt-1 text-sm text-slate-500">Sign in to manage the catalog.</p>
+
+      <form id="login-form" class="mt-6 flex flex-col gap-4">
+        <div>
+          <label for="email" class="text-sm font-medium text-slate-700">
+            Email
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            required
+            autocomplete="email"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </div>
+
+        <div>
+          <label for="password" class="text-sm font-medium text-slate-700">
+            Password
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            autocomplete="current-password"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </div>
+
+        {/* Error state */}
+        <p
+          id="error"
+          class="hidden rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+        </p>
+
+        <button
+          id="submit"
+          type="submit"
+          class="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span id="submit-spinner" class="spinner hidden"></span>
+          <span id="submit-label">Sign in</span>
+        </button>
+      </form>
+
+      <a
+        href="/"
+        class="mt-6 block text-center text-sm text-slate-500 hover:text-brand-600"
+      >
+        ‹ Back to store
+      </a>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  import { supabaseBrowser } from "../../lib/supabase-browser";
+
+  const form = document.getElementById("login-form") as HTMLFormElement;
+  const emailInput = document.getElementById("email") as HTMLInputElement;
+  const passwordInput = document.getElementById("password") as HTMLInputElement;
+  const errorEl = document.getElementById("error") as HTMLParagraphElement;
+  const submitBtn = document.getElementById("submit") as HTMLButtonElement;
+  const spinner = document.getElementById("submit-spinner") as HTMLElement;
+  const label = document.getElementById("submit-label") as HTMLElement;
+
+  // If a valid session already exists, skip the login form.
+  const {
+    data: { session },
+  } = await supabaseBrowser.auth.getSession();
+  if (session) window.location.replace("/admin");
+
+  function showError(message: string) {
+    errorEl.textContent = message;
+    errorEl.classList.remove("hidden");
+  }
+
+  function setLoading(loading: boolean) {
+    submitBtn.disabled = loading;
+    spinner.classList.toggle("hidden", !loading);
+    label.textContent = loading ? "Signing in…" : "Sign in";
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    errorEl.classList.add("hidden");
+    setLoading(true);
+
+    const { error } = await supabaseBrowser.auth.signInWithPassword({
+      email: emailInput.value.trim(),
+      password: passwordInput.value,
+    });
+
+    if (error) {
+      setLoading(false);
+      showError(error.message);
+      return;
+    }
+
+    // Success — go to the protected dashboard.
+    window.location.replace("/admin");
+  });
+</script>

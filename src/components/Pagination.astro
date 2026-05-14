@@ -1,0 +1,78 @@
+---
+interface Props {
+  currentPage: number;
+  totalPages: number;
+  /** Active filters, preserved across page links. */
+  q: string;
+  category: string;
+}
+
+const { currentPage, totalPages, q, category } = Astro.props;
+
+/** Build a catalog URL for a given page, keeping the active filters. */
+function pageUrl(page: number): string {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (category) params.set("category", category);
+  if (page > 1) params.set("page", String(page));
+  const qs = params.toString();
+  return qs ? `/?${qs}` : "/";
+}
+
+const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+const baseBtn =
+  "inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-3 text-sm font-medium";
+---
+
+{
+  totalPages > 1 && (
+    <nav
+      class="flex flex-wrap items-center justify-center gap-1"
+      aria-label="Pagination"
+    >
+      {currentPage > 1 ? (
+        <a
+          href={pageUrl(currentPage - 1)}
+          class={`${baseBtn} border-slate-300 bg-white text-slate-600 hover:bg-slate-100`}
+        >
+          ‹ Prev
+        </a>
+      ) : (
+        <span class={`${baseBtn} border-slate-200 bg-slate-50 text-slate-300`}>
+          ‹ Prev
+        </span>
+      )}
+
+      {pages.map((p) =>
+        p === currentPage ? (
+          <span
+            aria-current="page"
+            class={`${baseBtn} border-brand-600 bg-brand-600 text-white`}
+          >
+            {p}
+          </span>
+        ) : (
+          <a
+            href={pageUrl(p)}
+            class={`${baseBtn} border-slate-300 bg-white text-slate-600 hover:bg-slate-100`}
+          >
+            {p}
+          </a>
+        ),
+      )}
+
+      {currentPage < totalPages ? (
+        <a
+          href={pageUrl(currentPage + 1)}
+          class={`${baseBtn} border-slate-300 bg-white text-slate-600 hover:bg-slate-100`}
+        >
+          Next ›
+        </a>
+      ) : (
+        <span class={`${baseBtn} border-slate-200 bg-slate-50 text-slate-300`}>
+          Next ›
+        </span>
+      )}
+    </nav>
+  )
+}

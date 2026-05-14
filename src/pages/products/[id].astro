@@ -1,0 +1,141 @@
+---
+// PRODUCT DETAIL — Server-Side Rendered (SSR).
+// A dynamic route: the product is fetched by id from Supabase on every request.
+import Layout from "../../layouts/Layout.astro";
+import StoreHeader from "../../components/StoreHeader.astro";
+import Footer from "../../components/Footer.astro";
+import { createServerClient } from "../../lib/supabase";
+import type { Product } from "../../lib/types";
+
+const { id } = Astro.params;
+
+let product: Product | null = null;
+let loadError = "";
+
+try {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw error;
+  product = data;
+} catch (err) {
+  loadError =
+    err instanceof Error ? err.message : "Could not load this product.";
+}
+
+// Return a real 404 status when the product does not exist.
+if (!product && !loadError) {
+  Astro.response.status = 404;
+}
+
+const price = product
+  ? new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(product.price)
+  : "";
+const inStock = product ? product.stock > 0 : false;
+---
+
+<Layout title={product ? `${product.name} — AstroShop` : "Product not found"}>
+  <StoreHeader />
+
+  <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+    <a
+      href="/"
+      class="mb-6 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline"
+    >
+      ‹ Back to catalog
+    </a>
+
+    {
+      loadError ? (
+        <div class="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+          <p class="font-semibold text-red-700">Something went wrong</p>
+          <p class="mt-1 text-sm text-red-600">{loadError}</p>
+        </div>
+      ) : !product ? (
+        <div class="rounded-xl border border-slate-200 bg-white p-12 text-center">
+          <p class="text-4xl">🤷</p>
+          <p class="mt-2 font-semibold text-slate-700">Product not found</p>
+          <p class="mt-1 text-sm text-slate-500">
+            This product may have been removed from the catalog.
+          </p>
+          <a
+            href="/"
+            class="mt-4 inline-block rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            Browse the catalog
+          </a>
+        </div>
+      ) : (
+        <div class="grid gap-8 md:grid-cols-2">
+          <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div class="aspect-square bg-slate-100">
+              {product.image_url ? (
+                <img
+                  src={product.image_url}
+                  alt={product.name}
+                  class="h-full w-full object-cover"
+                />
+              ) : (
+                <div class="flex h-full w-full items-center justify-center text-6xl text-slate-300">
+                  📦
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div class="flex flex-col">
+            {product.category && (
+              <span class="text-sm font-medium uppercase tracking-wide text-brand-600">
+                {product.category}
+              </span>
+            )}
+            <h1 class="mt-1 text-3xl font-bold text-slate-900">
+              {product.name}
+            </h1>
+            <p class="mt-4 text-4xl font-extrabold text-slate-900">{price}</p>
+
+            <div class="mt-4">
+              {inStock ? (
+                <span class="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-700">
+                  ● In stock — {product.stock} available
+                </span>
+              ) : (
+                <span class="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
+                  ● Out of stock
+                </span>
+              )}
+            </div>
+
+            {product.description && (
+              <div class="mt-6">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">
+                  Description
+                </h2>
+                <p class="mt-2 whitespace-pre-line leading-relaxed text-slate-600">
+                  {product.description}
+                </p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={!inStock}
+              class="mt-8 rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {inStock ? "Add to cart" : "Unavailable"}
+            </button>
+          </div>
+        </div>
+      )
+    }
+  </main>
+
+  <Footer />
+</Layout>

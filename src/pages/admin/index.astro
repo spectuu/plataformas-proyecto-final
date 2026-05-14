@@ -1,0 +1,532 @@
+---
+// ADMIN DASHBOARD — Static (SSG), pre-rendered at build time.
+// The page ships as static HTML. Everything below — the auth guard, the product
+// list, and the full CRUD — runs in the browser. No SSR is needed because the
+// content is not user-sensitive on the server: access is enforced by Supabase
+// Auth + Row Level Security, not by the server rendering the page.
+export const prerender = true;
+
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout title="Admin Dashboard — AstroShop">
+  {/* While we verify the session, show a neutral loading screen. */}
+  <div id="auth-loading" class="flex flex-1 items-center justify-center">
+    <p class="flex items-center gap-2 text-slate-500">
+      <span class="spinner"></span> Checking session…
+    </p>
+  </div>
+
+  {/* The actual app — revealed only after the auth guard passes. */}
+  <div id="app" class="hidden flex-1">
+    <header class="border-b border-slate-200 bg-white">
+      <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
+        <a href="/admin" class="text-lg font-bold text-brand-600">
+          ⚙️ Admin Portal
+        </a>
+        <div class="flex items-center gap-3 text-sm">
+          <a href="/" class="text-slate-500 hover:text-brand-600">View store</a>
+          <span id="user-email" class="hidden text-slate-400 sm:inline"></span>
+          <button
+            id="logout-btn"
+            type="button"
+            class="rounded-lg border border-slate-300 px-3 py-1.5 font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl px-4 py-8">
+      <div class="mb-6 flex items-center justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-900">Products</h1>
+          <p class="text-sm text-slate-500">Create, edit and delete catalog items.</p>
+        </div>
+        <button
+          id="new-product-btn"
+          type="button"
+          class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          + New product
+        </button>
+      </div>
+
+      {/* Global error banner */}
+      <div
+        id="global-error"
+        class="mb-4 hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+      >
+      </div>
+
+      {/* Loading state */}
+      <div
+        id="products-loading"
+        class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-16 text-slate-500"
+      >
+        <span class="spinner"></span> Loading products…
+      </div>
+
+      {/* Empty state */}
+      <div
+        id="products-empty"
+        class="hidden rounded-xl border border-slate-200 bg-white py-16 text-center"
+      >
+        <p class="text-4xl">📦</p>
+        <p class="mt-2 font-semibold text-slate-700">No products yet</p>
+        <p class="mt-1 text-sm text-slate-500">
+          Click “New product” to add the first item.
+        </p>
+      </div>
+
+      {/* Products table */}
+      <div
+        id="products-table-wrap"
+        class="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white"
+      >
+        <table class="w-full text-left text-sm">
+          <thead class="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="px-4 py-3">Image</th>
+              <th class="px-4 py-3">Name</th>
+              <th class="px-4 py-3">Category</th>
+              <th class="px-4 py-3">Price</th>
+              <th class="px-4 py-3">Stock</th>
+              <th class="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="products-tbody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  {/* Create / edit dialog */}
+  <dialog
+    id="product-dialog"
+    class="w-full max-w-lg rounded-2xl p-0 backdrop:bg-slate-900/50"
+  >
+    <form id="product-form" class="flex flex-col gap-4 p-6">
+      <h2 id="dialog-title" class="text-lg font-bold text-slate-900">
+        New product
+      </h2>
+      <input type="hidden" id="product-id" />
+      <input type="hidden" id="current-image-url" />
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="sm:col-span-2">
+          <label for="f-name" class="text-sm font-medium text-slate-700">
+            Name *
+          </label>
+          <input
+            id="f-name"
+            type="text"
+            required
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </div>
+
+        <div>
+          <label for="f-category" class="text-sm font-medium text-slate-700">
+            Category
+          </label>
+          <input
+            id="f-category"
+            type="text"
+            placeholder="e.g. Electronics"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </div>
+
+        <div>
+          <label for="f-price" class="text-sm font-medium text-slate-700">
+            Price (USD) *
+          </label>
+          <input
+            id="f-price"
+            type="number"
+            required
+            min="0"
+            step="0.01"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </div>
+
+        <div>
+          <label for="f-stock" class="text-sm font-medium text-slate-700">
+            Stock
+          </label>
+          <input
+            id="f-stock"
+            type="number"
+            min="0"
+            step="1"
+            value="0"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </div>
+
+        <div>
+          <label for="f-image" class="text-sm font-medium text-slate-700">
+            Image
+          </label>
+          <input
+            id="f-image"
+            type="file"
+            accept="image/*"
+            class="mt-1 w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
+          />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label for="f-description" class="text-sm font-medium text-slate-700">
+            Description
+          </label>
+          <textarea
+            id="f-description"
+            rows="3"
+            class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          ></textarea>
+        </div>
+
+        {/* Current image preview (edit mode only) */}
+        <div id="image-preview-wrap" class="hidden sm:col-span-2">
+          <p class="text-xs text-slate-400">Current image:</p>
+          <img
+            id="image-preview"
+            alt="Current product image"
+            class="mt-1 h-20 w-20 rounded-lg border border-slate-200 object-cover"
+          />
+        </div>
+      </div>
+
+      {/* Dialog-scoped error state */}
+      <p
+        id="dialog-error"
+        class="hidden rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+      >
+      </p>
+
+      <div class="flex justify-end gap-2">
+        <button
+          id="dialog-cancel"
+          type="button"
+          class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+        >
+          Cancel
+        </button>
+        <button
+          id="dialog-save"
+          type="submit"
+          class="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span id="save-spinner" class="spinner hidden"></span>
+          <span id="save-label">Save</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+</Layout>
+
+<script>
+  import { supabaseBrowser } from "../../lib/supabase-browser";
+  import {
+    listProducts,
+    createProduct,
+    updateProduct,
+    deleteProduct,
+    uploadImage,
+    deleteImage,
+  } from "../../lib/products";
+  import type { Product } from "../../lib/types";
+
+  // --- Auth guard ----------------------------------------------------------
+  // Protected route: with no active session we redirect to the login page and
+  // never reveal the dashboard UI.
+  const {
+    data: { session },
+  } = await supabaseBrowser.auth.getSession();
+
+  if (!session) {
+    window.location.replace("/admin/login");
+  } else {
+    initDashboard(session.user.email ?? "");
+  }
+
+  function initDashboard(userEmail: string) {
+    // --- Element references ------------------------------------------------
+    const $ = <T extends HTMLElement>(id: string) =>
+      document.getElementById(id) as T;
+
+    const authLoading = $("auth-loading");
+    const app = $("app");
+    const userEmailEl = $("user-email");
+    const logoutBtn = $<HTMLButtonElement>("logout-btn");
+    const newBtn = $<HTMLButtonElement>("new-product-btn");
+    const globalError = $("global-error");
+
+    const loadingEl = $("products-loading");
+    const emptyEl = $("products-empty");
+    const tableWrap = $("products-table-wrap");
+    const tbody = $<HTMLTableSectionElement>("products-tbody");
+
+    const dialog = $<HTMLDialogElement>("product-dialog");
+    const form = $<HTMLFormElement>("product-form");
+    const dialogTitle = $("dialog-title");
+    const dialogError = $("dialog-error");
+    const idInput = $<HTMLInputElement>("product-id");
+    const currentImageInput = $<HTMLInputElement>("current-image-url");
+    const nameInput = $<HTMLInputElement>("f-name");
+    const categoryInput = $<HTMLInputElement>("f-category");
+    const priceInput = $<HTMLInputElement>("f-price");
+    const stockInput = $<HTMLInputElement>("f-stock");
+    const descriptionInput = $<HTMLTextAreaElement>("f-description");
+    const imageInput = $<HTMLInputElement>("f-image");
+    const previewWrap = $("image-preview-wrap");
+    const previewImg = $<HTMLImageElement>("image-preview");
+    const cancelBtn = $<HTMLButtonElement>("dialog-cancel");
+    const saveBtn = $<HTMLButtonElement>("dialog-save");
+    const saveSpinner = $("save-spinner");
+    const saveLabel = $("save-label");
+
+    // Reveal the app now that auth has been confirmed.
+    userEmailEl.textContent = userEmail;
+    userEmailEl.classList.remove("hidden");
+    authLoading.classList.add("hidden");
+    app.classList.remove("hidden");
+
+    const usd = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    });
+
+    // --- Helpers -----------------------------------------------------------
+    function showGlobalError(message: string) {
+      globalError.textContent = message;
+      globalError.classList.remove("hidden");
+    }
+    function clearGlobalError() {
+      globalError.classList.add("hidden");
+    }
+    function showDialogError(message: string) {
+      dialogError.textContent = message;
+      dialogError.classList.remove("hidden");
+    }
+    function setSaving(saving: boolean) {
+      saveBtn.disabled = saving;
+      cancelBtn.disabled = saving;
+      saveSpinner.classList.toggle("hidden", !saving);
+      saveLabel.textContent = saving ? "Saving…" : "Save";
+    }
+
+    /** Build one <tr> for a product (using textContent — no HTML injection). */
+    function buildRow(product: Product): HTMLTableRowElement {
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50";
+
+      // Image thumbnail
+      const tdImg = document.createElement("td");
+      tdImg.className = "px-4 py-3";
+      if (product.image_url) {
+        const img = document.createElement("img");
+        img.src = product.image_url;
+        img.alt = product.name;
+        img.className = "h-10 w-10 rounded object-cover";
+        tdImg.appendChild(img);
+      } else {
+        tdImg.textContent = "—";
+        tdImg.classList.add("text-slate-300");
+      }
+
+      // Name
+      const tdName = document.createElement("td");
+      tdName.className = "px-4 py-3 font-medium text-slate-800";
+      tdName.textContent = product.name;
+
+      // Category
+      const tdCat = document.createElement("td");
+      tdCat.className = "px-4 py-3 text-slate-500";
+      tdCat.textContent = product.category || "—";
+
+      // Price
+      const tdPrice = document.createElement("td");
+      tdPrice.className = "px-4 py-3 text-slate-700";
+      tdPrice.textContent = usd.format(product.price);
+
+      // Stock
+      const tdStock = document.createElement("td");
+      tdStock.className = "px-4 py-3 text-slate-700";
+      tdStock.textContent = String(product.stock);
+
+      // Actions
+      const tdActions = document.createElement("td");
+      tdActions.className = "px-4 py-3";
+      const actions = document.createElement("div");
+      actions.className = "flex justify-end gap-2";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.textContent = "Edit";
+      editBtn.className =
+        "rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100";
+      editBtn.addEventListener("click", () => openDialog(product));
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.textContent = "Delete";
+      delBtn.className =
+        "rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50";
+      delBtn.addEventListener("click", () => handleDelete(product));
+
+      actions.append(editBtn, delBtn);
+      tdActions.appendChild(actions);
+
+      tr.append(tdImg, tdName, tdCat, tdPrice, tdStock, tdActions);
+      return tr;
+    }
+
+    /** Load products and render the table / loading / empty / error states. */
+    async function loadProducts() {
+      clearGlobalError();
+      loadingEl.classList.remove("hidden");
+      tableWrap.classList.add("hidden");
+      emptyEl.classList.add("hidden");
+
+      try {
+        const products = await listProducts();
+        tbody.replaceChildren(...products.map(buildRow));
+
+        loadingEl.classList.add("hidden");
+        if (products.length === 0) {
+          emptyEl.classList.remove("hidden");
+        } else {
+          tableWrap.classList.remove("hidden");
+        }
+      } catch (err) {
+        loadingEl.classList.add("hidden");
+        showGlobalError(
+          err instanceof Error ? err.message : "Could not load products.",
+        );
+      }
+    }
+
+    // --- Dialog ------------------------------------------------------------
+    /** Open the dialog. Pass a product to edit; omit it to create. */
+    function openDialog(product?: Product) {
+      form.reset();
+      dialogError.classList.add("hidden");
+      setSaving(false);
+
+      if (product) {
+        dialogTitle.textContent = "Edit product";
+        idInput.value = product.id;
+        currentImageInput.value = product.image_url ?? "";
+        nameInput.value = product.name;
+        categoryInput.value = product.category ?? "";
+        priceInput.value = String(product.price);
+        stockInput.value = String(product.stock);
+        descriptionInput.value = product.description ?? "";
+        if (product.image_url) {
+          previewImg.src = product.image_url;
+          previewWrap.classList.remove("hidden");
+        } else {
+          previewWrap.classList.add("hidden");
+        }
+      } else {
+        dialogTitle.textContent = "New product";
+        idInput.value = "";
+        currentImageInput.value = "";
+        previewWrap.classList.add("hidden");
+      }
+
+      dialog.showModal();
+    }
+
+    function closeDialog() {
+      dialog.close();
+    }
+
+    /** Create or update a product, uploading a new image if one was picked. */
+    async function handleSubmit(event: SubmitEvent) {
+      event.preventDefault();
+      dialogError.classList.add("hidden");
+
+      const name = nameInput.value.trim();
+      const price = Number(priceInput.value);
+      if (!name) return showDialogError("Name is required.");
+      if (Number.isNaN(price) || price < 0)
+        return showDialogError("Price must be a number of 0 or more.");
+
+      setSaving(true);
+      try {
+        // Upload the new image if one was selected; otherwise keep the current one.
+        let imageUrl: string | null = currentImageInput.value || null;
+        const file = imageInput.files?.[0];
+        if (file) {
+          imageUrl = await uploadImage(file);
+        }
+
+        const input = {
+          name,
+          description: descriptionInput.value.trim(),
+          price,
+          category: categoryInput.value.trim(),
+          stock: Math.max(0, Math.floor(Number(stockInput.value) || 0)),
+          image_url: imageUrl,
+        };
+
+        if (idInput.value) {
+          await updateProduct(idInput.value, input);
+        } else {
+          await createProduct(input);
+        }
+
+        closeDialog();
+        await loadProducts();
+      } catch (err) {
+        showDialogError(
+          err instanceof Error ? err.message : "Could not save the product.",
+        );
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    /** Delete a product (with confirmation) and its image. */
+    async function handleDelete(product: Product) {
+      const ok = window.confirm(`Delete “${product.name}”? This cannot be undone.`);
+      if (!ok) return;
+
+      clearGlobalError();
+      try {
+        await deleteProduct(product.id);
+        await deleteImage(product.image_url); // best-effort cleanup
+        await loadProducts();
+      } catch (err) {
+        showGlobalError(
+          err instanceof Error ? err.message : "Could not delete the product.",
+        );
+      }
+    }
+
+    async function handleLogout() {
+      logoutBtn.disabled = true;
+      await supabaseBrowser.auth.signOut();
+      window.location.replace("/admin/login");
+    }
+
+    // --- Wire up events ----------------------------------------------------
+    newBtn.addEventListener("click", () => openDialog());
+    cancelBtn.addEventListener("click", closeDialog);
+    form.addEventListener("submit", handleSubmit);
+    logoutBtn.addEventListener("click", handleLogout);
+    // Close the dialog when clicking on the backdrop.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) closeDialog();
+    });
+
+    // Initial load.
+    loadProducts();
+  }
+</script>
